@@ -43,6 +43,7 @@ class CWClass():
   
         #Determine number of columns by looking at the second last line in the file.
         number_of_columns = len(lineList[len(lineList)-2].split("\t"))
+        print(number_of_columns)
         column_array = range(0,number_of_columns)
         
         
@@ -67,7 +68,7 @@ class CWClass():
             comp_time = data[:,10]
             comp_date = data[:,11]
         
-        elif number_of_columns == 8:
+        elif number_of_columns == 9:
 
             file_from_sdcard = True 
             print('File from MicroSD Card')
@@ -80,7 +81,18 @@ class CWClass():
             deadtime = data[:,5].astype(float)
             temperature = data[:,6].astype(float)
             pressure = data[:,7].astype(float)
-            
+            accelerometer = data[:,8].astype(str)
+            accel_x = []
+            accel_y = []
+            accel_z = []
+            for i in range(len(accelerometer)):
+                accel = accelerometer[i].split(':')
+                accel_x.append(accel[0])
+                accel_y.append(accel[1])
+                accel_z.append(accel[2])
+            accel_x = np.asarray(accel_x).astype(float)
+            accel_y = np.asarray(accel_y).astype(float)
+            accel_z = np.asarray(accel_z).astype(float)
         else: 
             print('Incorrect number of collumns in file: %1u' %number_of_columns)
 
@@ -130,6 +142,10 @@ class CWClass():
         self.temperature      = temperature         # an arrray of the measured event ADC value
         self.pressure        = pressure         # an arrray of the measured event ADC value
 
+        self.accel_x        = accel_x         # an arrray event acceleration x data
+        self.accel_y        = accel_y        # an arrray event acceleration x data
+        self.accel_z        = accel_z        # an arrray event acceleration x data
+
         self.event_deadtime_s   = event_deadtime_s     # an array of the measured event deadtime in seconds
         self.event_deadtime_ms  = event_deadtime_s*1000            # an array of the measured event deadtime in miliseconds
         self.total_deadtime_s   = max(deadtime) - min(deadtime)       # an array of the measured event deadtime in miliseconds
@@ -175,6 +191,22 @@ class CWClass():
             sum_temperature, _ = np.histogram(self.time_stamp_s, bins=bins, weights=self.temperature)
             count_temperature, _ = np.histogram(self.time_stamp_s, bins=bins)
             self.binned_temperature = sum_temperature / np.maximum(count_temperature, 1)  # Avoid division by zero
+
+            # Bin the temperature by taking the average temperature in each bin
+            sum_accel_x, _ = np.histogram(self.time_stamp_s, bins=bins, weights=self.accel_x)
+            count_accel_x, _ = np.histogram(self.time_stamp_s, bins=bins)
+            self.binned_accel_x = sum_accel_x / np.maximum(count_accel_x, 1)  # Avoid division by zero
+
+            # Bin the temperature by taking the average temperature in each bin
+            sum_accel_y, _ = np.histogram(self.time_stamp_s, bins=bins, weights=self.accel_y)
+            count_accel_y, _ = np.histogram(self.time_stamp_s, bins=bins)
+            self.binned_accel_y = sum_accel_y / np.maximum(count_accel_y, 1)  # Avoid division by zero
+
+            # Bin the temperature by taking the average temperature in each bin
+            sum_accel_z, _ = np.histogram(self.time_stamp_s, bins=bins, weights=self.accel_z)
+            count_accel_z, _ = np.histogram(self.time_stamp_s, bins=bins)
+            self.binned_accel_z = sum_accel_z / np.maximum(count_accel_z, 1)  # Avoid division by zero
+
 
 
         elif file_from_sdcard:
@@ -248,6 +280,21 @@ class CWClass():
             sum_temperature, _ = np.histogram(self.PICO_timestamp_s, bins=bins, weights=self.temperature)
             count_temperature, _ = np.histogram(self.PICO_timestamp_s, bins=bins)
             self.binned_temperature = sum_temperature / np.maximum(count_temperature, 1)  # Avoid division by zero
+
+            # Bin the temperature by taking the average temperature in each bin
+            sum_accel_x, _ = np.histogram(self.PICO_timestamp_s, bins=bins, weights=self.accel_x)
+            count_accel_x, _ = np.histogram(self.PICO_timestamp_s, bins=bins)
+            self.binned_accel_x = sum_accel_x / np.maximum(count_accel_x, 1)  # Avoid division by zero
+
+            # Bin the temperature by taking the average temperature in each bin
+            sum_accel_y, _ = np.histogram(self.PICO_timestamp_s, bins=bins, weights=self.accel_y)
+            count_accel_y, _ = np.histogram(self.PICO_timestamp_s, bins=bins)
+            self.binned_accel_y = sum_accel_y / np.maximum(count_accel_y, 1)  # Avoid division by zero
+
+            # Bin the temperature by taking the average temperature in each bin
+            sum_accel_z, _ = np.histogram(self.PICO_timestamp_s, bins=bins, weights=self.accel_z)
+            count_accel_z, _ = np.histogram(self.PICO_timestamp_s, bins=bins)
+            self.binned_accel_z = sum_accel_z / np.maximum(count_accel_z, 1)  # Avoid division by zero
 
             # Coincident binned data
 
@@ -451,7 +498,7 @@ def main():
             sys.exit(1)
 
     # Load the data file, set the binsize for the rate as a function of time plot.
-    f1 = CWClass(file_path, bin_size = 600)
+    f1 = CWClass(file_path, bin_size = 300)
 
     
     # Plot the ADC values from the coincident and non-coincident events
@@ -462,9 +509,21 @@ def main():
         labels=[r'All Events:  ' + str(f1.count_rate) + '+/-' + str(f1.count_rate_err) +' Hz',
                 r'Non-Coincident:  ' + str(f1.count_rate_coincident) + '+/-' + str(f1.count_rate_err_coincident) +' Hz',
                 r'Coincident: ' + str(f1.count_rate_coincident) + '+/-' + str(f1.count_rate_err_coincident) +' Hz'],
-        xmin=10, xmax=4095, ymin=0.1e-3, ymax=1.9,nbins=4001,
+        xmin=50, xmax=4095, ymin=0.1e-3, ymax=1.1,nbins=101,
         xlabel='Meausred ADC peak value [0-4095]',
         pdf_name=infile_name+'_ADC.pdf',title = 'ADC Measurement')
+    
+    c = NPlot(
+        data=[ f1.adc,f1.adc[~f1.select_coincident],f1.adc[f1.select_coincident]],
+        weights=[f1.weights,f1.weights[~f1.select_coincident],f1.weights[f1.select_coincident]],
+        colors=[mycolors[7], mycolors[3],mycolors[1]],
+        labels=[r'All Events:  ' + str(f1.count_rate) + '+/-' + str(f1.count_rate_err) +' Hz',
+                r'Non-Coincident:  ' + str(f1.count_rate_coincident) + '+/-' + str(f1.count_rate_err_coincident) +' Hz',
+                r'Coincident: ' + str(f1.count_rate_coincident) + '+/-' + str(f1.count_rate_err_coincident) +' Hz'],
+        xmin=200, xmax=274, ymin=0.1e-3, ymax=1.1,nbins=1001,xscale='linear',
+        xlabel='Meausred ADC peak value [0-4095]',
+        pdf_name=infile_name+'_ADC.pdf',title = 'ADC Measurement')
+    
     
     # Plot the Calculated SiPM Peak voltages coincident and non-coincident events
     c = NPlot(
@@ -474,20 +533,10 @@ def main():
         labels=[r'All Events:  ' + str(f1.count_rate) + '+/-' + str(f1.count_rate_err) +' Hz',
                 r'Non-Coincident:  ' + str(f1.count_rate_coincident) + '+/-' + str(f1.count_rate_err_coincident) +' Hz',
                 r'Coincident: ' + str(f1.count_rate_coincident) + '+/-' + str(f1.count_rate_err_coincident) +' Hz'],
-        xmin=5, xmax=600, ymin=0.1e-6, ymax=0.9,xscale='log',
+        xmin=2, xmax=600, ymin=0.1e-3, ymax=1.1,xscale='log',
         xlabel='SiPM Peak Voltage [mV]',fit_gaussian=True,
         pdf_name=infile_name+'_SiPM_peak_voltage.pdf',title = 'SiPM Peak Voltage Measurement',)
     
-    c = NPlot(
-        data=[f1.sipm, f1.sipm[~f1.select_coincident],f1.sipm[f1.select_coincident]],
-        weights=[f1.weights, f1.weights[~f1.select_coincident],f1.weights[f1.select_coincident]],
-        colors=[mycolors[7], mycolors[3],mycolors[1]],
-        labels=[r'All Events:  ' + str(f1.count_rate) + '+/-' + str(f1.count_rate_err) +' Hz',
-                r'Non-Coincident:  ' + str(f1.count_rate_coincident) + '+/-' + str(f1.count_rate_err_coincident) +' Hz',
-                r'Coincident: ' + str(f1.count_rate_coincident) + '+/-' + str(f1.count_rate_err_coincident) +' Hz'],
-        xmin=5, xmax=600, ymin=0.1e-6, ymax=0.9,xscale='linear',
-        xlabel='SiPM Peak Voltage [mV]',
-        pdf_name=infile_name+'_SiPM_peak_voltage_linear.pdf',title = 'SiPM Peak Voltage Measurement',)
     
     # Plot rate as a function of time
     c = ratePlot(time = [f1.binned_time_m,f1.binned_time_m,f1.binned_time_m],
@@ -515,6 +564,8 @@ def main():
         loc = 4,pdf_name=infile_name+'_pressure.pdf',title = 'Pressure Measurement')
     # Plot rate of coincident and non coincident events
 
+    
+
     c = ratePlot(time = [f1.binned_time_m,],
         count_rates = [f1.binned_temperature],
         count_rates_err = [np.ones(len(f1.binned_temperature))*0.1], # Uncertainty on pressure is 0.1C
@@ -524,6 +575,36 @@ def main():
         fontsize = 16,alpha = 1,labels=['Temperature Data'],
         xscale = 'linear',yscale = 'linear',xlabel = 'Time [min]',ylabel = r'Temperature [$^{\circ}$C]',
         loc = 4,pdf_name=infile_name+'_temperature.pdf',title = 'Temperature Measurement')
+
+    c = ratePlot(time = [f1.binned_time_m,],
+        count_rates = [f1.binned_accel_x],
+        count_rates_err = [np.ones(len(f1.binned_accel_x))*0.001], # Uncertainty on pressure is 0.1C
+        colors =[mycolors[2]],
+        xmin = min(f1.binned_time_m),xmax = max(f1.binned_time_m),ymin = min(f1.binned_accel_x)-0.001,ymax = max(f1.binned_accel_x)+0.001,
+        figsize = [7,5],
+        fontsize = 16,alpha = 1,labels=['Acceleration X Data'],
+        xscale = 'linear',yscale = 'linear',xlabel = 'Time [min]',ylabel = r'Acceleration $\hat{\mathrm{x}}$  [g]',
+        loc = 4,pdf_name=infile_name+'_accel_x.pdf',title = 'Acceleration X Measurement')
+    
+    c = ratePlot(time = [f1.binned_time_m,],
+        count_rates = [f1.binned_accel_y],
+        count_rates_err = [np.ones(len(f1.binned_accel_y))*0.001], # Uncertainty on pressure is 0.1C
+        colors =[mycolors[3]],
+        xmin = min(f1.binned_time_m),xmax = max(f1.binned_time_m),ymin = min(f1.binned_accel_y)-0.001,ymax = max(f1.binned_accel_y)+0.001,
+        figsize = [7,5],
+        fontsize = 16,alpha = 1,labels=['Acceleration Y Data'],
+        xscale = 'linear',yscale = 'linear',xlabel = 'Time [min]',ylabel = r'Acceleration $\hat{\mathrm{y}}$  [g]',
+        loc = 4,pdf_name=infile_name+'_accel_y.pdf',title = 'Acceleration Y Measurement')
+    
+    c = ratePlot(time = [f1.binned_time_m,],
+        count_rates = [f1.binned_accel_z],
+        count_rates_err = [np.ones(len(f1.binned_accel_z))*0.001], # Uncertainty on pressure is 0.1C
+        colors =[mycolors[4]],
+        xmin = min(f1.binned_time_m),xmax = max(f1.binned_time_m),ymin = min(f1.binned_accel_z)-0.001,ymax = max(f1.binned_accel_z)+0.001,
+        figsize = [7,5],
+        fontsize = 16,alpha = 1,labels=['Acceleration Z Data'],
+        xscale = 'linear',yscale = 'linear',xlabel = 'Time [min]',ylabel = r'Acceleration $\hat{\mathrm{z}}$  [g]',
+        loc = 4,pdf_name=infile_name+'_accel_z.pdf',title = 'Acceleration Z Measurement')
 
 if __name__ == "__main__":
     main()
