@@ -1,6 +1,9 @@
+
 # CosmicWatch-Desktop-Muon-Detector-v3X
 
 The CosmicWatch Detector v3X is a compact, low-power (0.5 W) muon telescope that uses a plastic scintillator and silicon photomultiplier to record cosmic-ray muons with high sensitivity and timing precision. It supports standalone data logging to microSD or live USB streaming, offers coincidence mode with a second detector for background suppression, and logs rich event metadata (timestamp, ADC value, coincident flag, temperature, pressure, acceleration). Almost fully open-source with detailed build instructions and provided Python analysis scripts, v3X is great for education, outreach, citizen science, and more advanced cosmic-ray studies.
+
+![Alt text](Pictures/CW_arraw.jpg)
 
 ## License
 
