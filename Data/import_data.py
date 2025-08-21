@@ -130,7 +130,7 @@ file.write("####################################################################
 
 file.write("#                                                          CosmicWatch: The Desktop Muon Detector v3X\n")
 file.write("#                                                                   Questions? saxani@udel.edu\n")
-file.write("# Event  Timestamp[s]  Coincident[bool]  ADC[0-4095]  SiPM[mV]  Deadtime[s]  Temp[C]  Pressure[Pa]  Accel(X:Y:Z)[g]  Gyro(X:Y:Z)[deg/sec]  Name  Time  Date\n")
+file.write("# Event  Timestamp[s]  Flag  ADC[12b]  SiPM[mV]  Deadtime[s]  Temp[C]  Press[Pa]  Accel(X:Y:Z)[g]  Gyro(X:Y:Z)[deg/sec]  Name  Time  Date\n")
 file.write("###########################################################################################################################################################\n")
 
 while True:
