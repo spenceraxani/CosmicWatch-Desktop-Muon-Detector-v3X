@@ -13,3 +13,6 @@
 # macOS
 .DS_Store
 **/.DS_Store
+
+# Excel temp files
+~.xlsx
