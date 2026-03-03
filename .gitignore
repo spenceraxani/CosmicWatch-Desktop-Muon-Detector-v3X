@@ -1,5 +1,15 @@
 ~
 .DS_Store
+**/.DS_Store
 ~$Purchasing_List_v3X_sa.xlsx
 ~$*.xlsx
 ~.xlsx
+
+# macOS
+.DS_Store
+**/.DS_Store
+._*
+
+# macOS
+.DS_Store
+**/.DS_Store
