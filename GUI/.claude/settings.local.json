@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls \"/Users/saxani/My Drive/CosmicWatch/Detector_Versions/CosmicWatch_v3X/GUI/\"*.sh)",
+      "Bash(chmod +x \"/Users/saxani/My Drive/CosmicWatch/Detector_Versions/CosmicWatch_v3X/GUI/install.sh\")",
+      "Bash(python3 -c \"from PIL import Image; img = Image.open\\(''/Users/saxani/My Drive/CosmicWatch/Detector_Versions/CosmicWatch_v3X/GUI/Images/logo_white.png''\\); print\\(img.size, img.mode\\)\")"
+    ]
+  }
+}
