@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (
     QFileDialog, QComboBox, QRadioButton, QButtonGroup, QToolButton, QCheckBox, QFileDialog, QLineEdit
 )
 from PyQt5.QtCore import (
-    Qt,QSize, Qt, QObject, pyqtSignal
+    Qt,QSize, Qt, QObject, pyqtSignal, QTimer
 )
 from PyQt5.QtGui import (
     QPixmap,QIcon, QFont
@@ -141,16 +141,39 @@ class CWClass():
         for i in range(min(len(lineList),1000)):
             if "#" in lineList[i]:
                 last_line_of_header = i+1
-                #Determine number of columns by looking at the second last line in the file.
-        number_of_columns = len(lineList[len(lineList)-2].split("\t"))
+        # Determine number of columns from a line near the end of the file. Scan backward
+        # (skipping the very last line, which may still be mid-write) for one that matches
+        # a known-good format, rather than trusting a single line — a file being actively
+        # appended to (especially on a cloud-synced folder like Google Drive) can carry an
+        # occasional short/malformed row without the rest of the recording being invalid.
+        # Recorded lines end with a trailing tab before the newline, which would otherwise
+        # split into a spurious extra (empty/"\n") column here.
+        number_of_columns = 0
+        scan_start = len(lineList) - 2
+        for i in range(scan_start, max(scan_start - 200, -1), -1):
+            n = len(lineList[i].rstrip('\t\n').split("\t"))
+            if n in (10, 13):
+                number_of_columns = n
+                break
+        if number_of_columns == 0:
+            number_of_columns = len(lineList[scan_start].rstrip('\t\n').split("\t"))
         column_array = range(0,number_of_columns)
 
+
+        def split_xyz(str_array):
+            """Split 'X:Y:Z' strings (accel/gyro columns) into three float arrays."""
+            x, y, z = [], [], []
+            for s in str_array:
+                parts = s.split(':')
+                x.append(parts[0])
+                y.append(parts[1])
+                z.append(parts[2])
+            return np.asarray(x).astype(float), np.asarray(y).astype(float), np.asarray(z).astype(float)
 
         file_from_computer = False
         file_from_sdcard   = False
         if number_of_columns == 13:
             file_from_computer = True
-            self.feed_box.append('File from Computer')
             data = np.genfromtxt(file_name, dtype = str, delimiter='\t', usecols=column_array, invalid_raise=False, skip_header=header_lines)
             event_number = data[:,0].astype(float) #first column of data
             PICO_timestamp_s = data[:,1].astype(float)
@@ -160,14 +183,8 @@ class CWClass():
             deadtime = data[:,5].astype(float)
             temperature = data[:,6].astype(float)
             pressure = data[:,7].astype(float)
-            accelerometer = data[:,8].astype(str)
-            accel_x = []
-            accel_y = []
-            accel_z = []
-            Gyro = data [:,9].astype(str)
-            gyro_x = []
-            gyro_y = []
-            gyro_z = []
+            accel_x, accel_y, accel_z = split_xyz(data[:,8].astype(str))
+            gyro_x, gyro_y, gyro_z = split_xyz(data[:,9].astype(str))
             detName = data[:,10]
             comp_time = data[:,11]
             comp_date = data[:,12]
@@ -184,32 +201,12 @@ class CWClass():
             deadtime = data[:,5].astype(float)
             temperature = data[:,6].astype(float)
             pressure = data[:,7].astype(float)
-            accelerometer = data[:,8].astype(str)
-            accel_x = []
-            accel_y = []
-            accel_z = []
-            Gyro = data [:,9].astype(str)
-            gyro_x = []
-            gyro_y = []
-            gyro_z = []
-            for i in range(len(accelerometer)):
-                accel = accelerometer[i].split(':')
-                accel_x.append(accel[0])
-                accel_y.append(accel[1])
-                accel_z.append(accel[2])
-            accel_x = np.asarray(accel_x).astype(float)
-            accel_y = np.asarray(accel_y).astype(float)
-            accel_z = np.asarray(accel_z).astype(float)
-            for i in range(len(Gyro)):
-                gyro = Gyro[i].split(':')
-                gyro_x.append(gyro[0])
-                gyro_y.append(gyro[1])
-                gyro_z.append(gyro[2])
-            gyro_x = np.asarray(gyro_x).astype(float)
-            gyro_y = np.asarray(gyro_y).astype(float)
-            gyro_z = np.asarray(gyro_z).astype(float)
+            accel_x, accel_y, accel_z = split_xyz(data[:,8].astype(str))
+            gyro_x, gyro_y, gyro_z = split_xyz(data[:,9].astype(str))
         else:
-            self.feed_box.append(f"Incorrect number of collumns in file: %1u' %number_of_columns")
+            msg = f"Incorrect number of columns in file: {number_of_columns}"
+            self.feed_box.append(msg)
+            raise ValueError(msg)
 
         if adc_min > 0 or adc_max < 4095:
             adc_mask = (np.asarray(adc) >= adc_min) & (np.asarray(adc) <= adc_max)
@@ -221,17 +218,16 @@ class CWClass():
             deadtime          = np.asarray(deadtime)[adc_mask]
             temperature       = np.asarray(temperature)[adc_mask]
             pressure          = np.asarray(pressure)[adc_mask]
+            accel_x           = np.asarray(accel_x)[adc_mask]
+            accel_y           = np.asarray(accel_y)[adc_mask]
+            accel_z           = np.asarray(accel_z)[adc_mask]
+            gyro_x            = np.asarray(gyro_x)[adc_mask]
+            gyro_y            = np.asarray(gyro_y)[adc_mask]
+            gyro_z            = np.asarray(gyro_z)[adc_mask]
             if file_from_computer:
                 comp_time = np.asarray(comp_time)[adc_mask]
                 comp_date = np.asarray(comp_date)[adc_mask]
                 detName   = np.asarray(detName)[adc_mask]
-            if file_from_sdcard:
-                accel_x = np.asarray(accel_x)[adc_mask]
-                accel_y = np.asarray(accel_y)[adc_mask]
-                accel_z = np.asarray(accel_z)[adc_mask]
-                gyro_x  = np.asarray(gyro_x)[adc_mask]
-                gyro_y  = np.asarray(gyro_y)[adc_mask]
-                gyro_z  = np.asarray(gyro_z)[adc_mask]
 
         if file_from_computer:
             time_stamp = []
@@ -252,7 +248,10 @@ class CWClass():
             self.total_time_s     = max(time_stamp) -  min(time_stamp)     # The absolute time of an event in seconds
             self.detector_name    = detName                                
             self.n_detector       = len(set(detName))
-        event_deadtime_s = np.diff(np.append([0],deadtime))
+        # deadtime is cumulative since the detector started, not since this recording started,
+        # so zero it relative to this file's first event before diffing — otherwise the first
+        # entry picks up the entire pre-recording cumulative deadtime as a single huge spike.
+        event_deadtime_s = np.diff(np.append([0], deadtime - min(deadtime)))
         self.PICO_timestamp_s       = PICO_timestamp_s
         self.PICO_total_time_s = max(self.PICO_timestamp_s) - min(self.PICO_timestamp_s)
         self.PICO_total_time_ms= self.PICO_total_time_s * 1000.
@@ -279,7 +278,9 @@ class CWClass():
         self.event_deadtime_ms  = event_deadtime_s*1000            # an array of the measured event deadtime in miliseconds
         self.total_deadtime_s   = max(deadtime) - min(deadtime)       # an array of the measured event deadtime in miliseconds
         self.total_deadtime_ms  = self.total_deadtime_s*1000. # The total deadtime in seconds
-        self.PICO_event_livetime_s = np.diff(np.append([0],self.PICO_timestamp_s)) - self.event_deadtime_s
+        # Same issue as deadtime above: PICO_timestamp_s is the raw device clock, not zero-based
+        # at the start of this recording, so zero it first to avoid a huge spurious first entry.
+        self.PICO_event_livetime_s = np.diff(np.append([0], self.PICO_timestamp_s - min(self.PICO_timestamp_s))) - self.event_deadtime_s
         def round(x, err):
             """Round x and err based on the first significant digit of err."""
             if err == 0:
@@ -295,14 +296,47 @@ class CWClass():
 
         if file_from_computer:
             self.live_time        = (self.total_time_s - self.total_deadtime_s)
+            self.live_time_s      = self.live_time
             self.weights          = np.ones(len(event_number)) / self.live_time
-            self.count_rate       = self.total_counts/self.live_time 
-            self.count_rate_err   = np.sqrt(self.total_counts)/self.live_time 
+            self.count_rate, self.count_rate_err = round(
+                    self.total_counts/self.live_time,
+                    np.sqrt(self.total_counts)/self.live_time)
 
             bins = range(0,int(max(self.time_stamp_s)), self.bin_size)
             counts, binEdges       = np.histogram(self.time_stamp_s, bins = bins)
             bin_livetime, binEdges = np.histogram(self.time_stamp_s, bins = bins, weights = self.PICO_event_livetime_s)
-        
+
+            self.binned_counts     = counts
+            self.binned_counts_err = np.sqrt(counts)
+            safe_livetime = np.where(bin_livetime > 0, bin_livetime, np.nan)
+            self.binned_count_rate = counts/safe_livetime
+            self.binned_count_rate_err = np.sqrt(counts)/safe_livetime
+
+            counts_coincident, _ = np.histogram(self.time_stamp_s[self.select_coincident], bins = bins)
+            counts_non_coincident, _ = np.histogram(self.time_stamp_s[~self.select_coincident], bins = bins)
+
+            self.total_coincident = len(self.time_stamp_s[self.select_coincident])
+            self.count_rate_coincident, self.count_rate_err_coincident = round(
+                    self.total_coincident/self.live_time,
+                    np.sqrt(self.total_coincident)/self.live_time)
+
+            self.binned_counts_coincident     = counts_coincident
+            self.binned_counts_err_coincident = np.sqrt(counts_coincident)
+            # Use the same per-bin livetime as the all-events rate so coincident + non-coincident == all,
+            # even in the first/last bin where a bin doesn't span the full nominal bin_size.
+            self.binned_count_rate_coincident = counts_coincident/safe_livetime
+            self.binned_count_rate_err_coincident = np.sqrt(counts_coincident)/safe_livetime
+
+            self.total_non_coincident = len(self.time_stamp_s[~self.select_coincident])
+            self.count_rate_non_coincident, self.count_rate_err_non_coincident = round(
+                    self.total_non_coincident/self.live_time,
+                    np.sqrt(self.total_non_coincident)/self.live_time)
+
+            self.binned_counts_non_coincident     = counts_non_coincident
+            self.binned_counts_err_non_coincident = np.sqrt(counts_non_coincident)
+            self.binned_count_rate_non_coincident = counts_non_coincident/safe_livetime
+            self.binned_count_rate_err_non_coincident = np.sqrt(counts_non_coincident)/safe_livetime
+
             # Bin the pressure by taking the average pressure in each bin
             sum_pressure, _ = np.histogram(self.time_stamp_s, bins=bins, weights=self.pressure)
             count_pressure, _ = np.histogram(self.time_stamp_s, bins=bins)
@@ -368,38 +402,36 @@ class CWClass():
             self.binned_count_rate_err = np.sqrt(counts)/safe_livetime
 
             counts_coincident, binEdges      = np.histogram(self.PICO_timestamp_s[self.select_coincident], bins = bins)
-            bin_deadtime, binEdges      = np.histogram(self.PICO_timestamp_s, bins = bins, weights = self.event_deadtime_s)
 
             self.total_coincident = len(self.PICO_timestamp_s[self.select_coincident])
-            
+
             self.feed_box.append(
                 f"    -- Count Rate Coincident (coincident): {np.round(self.total_coincident/self.live_time_s, n)} +/- "
                 f"{np.round(np.sqrt(self.total_coincident)/self.live_time_s, n)} Hz"
             )
 
             self.count_rate_coincident, self.count_rate_err_coincident = round(
-                    self.total_coincident/self.live_time_s, 
+                    self.total_coincident/self.live_time_s,
                     np.sqrt(self.total_coincident)/self.live_time_s)
-            
-            
-            
-            
+
+
+
+
             self.binned_counts_coincident     = counts_coincident
             self.binned_counts_err_coincident = np.sqrt(counts_coincident)
-            safe_livetime_coinc = np.where((bin_size - bin_deadtime) > 0, bin_size - bin_deadtime, np.nan)
-            self.binned_count_rate_coincident = counts_coincident/safe_livetime_coinc
-            self.binned_count_rate_err_coincident = np.sqrt(counts_coincident)/safe_livetime_coinc
+            # Use the same per-bin livetime as the all-events rate so coincident + non-coincident == all,
+            # even in the first/last bin where a bin doesn't span the full nominal bin_size.
+            self.binned_count_rate_coincident = counts_coincident/safe_livetime
+            self.binned_count_rate_err_coincident = np.sqrt(counts_coincident)/safe_livetime
 
 
 
             counts_non_coincident, binEdges      = np.histogram(self.PICO_timestamp_s[~self.select_coincident], bins = bins)
-            bin_deadtime, binEdges      = np.histogram(self.PICO_timestamp_s, bins = bins, weights = self.event_deadtime_s)
             self.total_non_coincident = len(self.PICO_timestamp_s[~self.select_coincident])
             self.binned_counts_non_coincident     = counts_non_coincident
             self.binned_counts_err_non_coincident = np.sqrt(counts_non_coincident)
-            safe_livetime_non = np.where((bin_size - bin_deadtime) > 0, bin_size - bin_deadtime, np.nan)
-            self.binned_count_rate_non_coincident = counts_non_coincident/safe_livetime_non
-            self.binned_count_rate_err_non_coincident = np.sqrt(counts_non_coincident)/safe_livetime_non
+            self.binned_count_rate_non_coincident = counts_non_coincident/safe_livetime
+            self.binned_count_rate_err_non_coincident = np.sqrt(counts_non_coincident)/safe_livetime
             self.feed_box.append(
                 f"    -- Count Rate Non-Coincident: {np.round(self.total_non_coincident/self.live_time_s, n)} +/- "
                 f"{np.round(np.sqrt(self.total_non_coincident)/self.live_time_s, n)} Hz"
@@ -452,7 +484,6 @@ class CWClass():
         bincenters = 0.5*(binEdges[1:]+ binEdges[:-1])
         self.binned_time_s     = bincenters
         self.binned_time_m     = bincenters/60.
-        self.weights           = np.ones(len(event_number)) / self.live_time_s  
 
 
         
@@ -527,6 +558,13 @@ class FuturisticDashboard(QWidget):
     data_ready3 = pyqtSignal(str)
     data_ready4 = pyqtSignal(str)
         
+    def default_data_dir(self):
+        """Data folder inside the GUI installation location."""
+        gui_dir = os.path.dirname(os.path.abspath(__file__))
+        data_dir = os.path.join(gui_dir, "Data")
+        os.makedirs(data_dir, exist_ok=True)
+        return data_dir
+
     def handle_port_selected(self, selected_port):
         time.sleep(0.1)
         if selected_port in ("Select Port", "No ports found", ""):
@@ -536,9 +574,12 @@ class FuturisticDashboard(QWidget):
         time.sleep(0.1)
         if self.serial_connection.is_open:
             self.feed_box.append(f"Connected to {selected_port}.")
+            filename = f"CW_data_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt"
+            filepath = os.path.join(self.default_data_dir(), filename)
+            self.record_file(filepath=filepath)
         else:
             self.feed_box.append(f"Failed to connect to {selected_port}.")
-        
+
         return
     def refresh_ports(self):
         if hasattr(self, 'serial_connection') and self.serial_connection and self.serial_connection.is_open:
@@ -571,7 +612,6 @@ class FuturisticDashboard(QWidget):
         self.read_serial_active = False
         self.current_plot_func = self.run_rate  # tracks the last-shown plot
         self.data_ready.connect(self.feed_box.append)
-        self.data_ready2.connect(self.avg_stat1.setText)
         # self.data_ready3.connect(self.avg_stat_2.setText)
         # self.data_ready4.connect(self.avg_stat_3.setText)
 
@@ -1433,25 +1473,34 @@ class FuturisticDashboard(QWidget):
         self.static_canvas.draw()
 
 
-    def _emit_status(self):
-        """Emit updated statistics HTML to the status panel."""
+    def _status_html(self, run_time_s, deadtime_s, live_time_s, events, rate, rate_err,
+                      coincidences, coinc_rate, coinc_rate_err, avg_temp, avg_pressure):
+        """Build the summary-statistics table, shared by the loaded-file view and the live serial view."""
         def row(label, value):
             return f"<tr><td>{label}</td><td align='right' nowrap>{value}</td></tr>"
-        html = (
+        return (
             "<table width='100%' cellspacing='3'>"
-            + row("Run Time:",    f"{self.cw.PICO_total_time_s:,.2f} s")
-            + row("Deadtime:",    f"{self.cw.total_deadtime_s:,.2f} s")
-            + row("Live Time:",   f"{self.cw.live_time_s:,.2f} s")
+            + row("Run Time:",    f"{run_time_s:,.2f} s")
+            + row("Deadtime:",    f"{deadtime_s:,.2f} s")
+            + row("Live Time:",   f"{live_time_s:,.2f} s")
             + "<tr><td colspan='2'>&nbsp;</td></tr>"
-            + row("Events:",      f"{self.cw.total_counts:,}")
-            + row("Rate:",        f"{self.cw.count_rate:,.4f} ± {self.cw.count_rate_err:,.4f} Hz")
-            #+ "<tr><td colspan='2'>&nbsp;</td></tr>"
-            + row("Coincidences:", f"{self.cw.total_coincident:,}")
-            + row("Rate:",        f"{self.cw.count_rate_coincident:,.4f} ± {self.cw.count_rate_err_coincident:,.4f} Hz")
+            + row("Events:",      f"{events:,.0f}")
+            + row("Rate:",        f"{rate:,.4f} ± {rate_err:,.4f} Hz")
+            + row("Coincidences:", f"{coincidences:,.0f}")
+            + row("Rate:",        f"{coinc_rate:,.4f} ± {coinc_rate_err:,.4f} Hz")
             + "<tr><td colspan='2'>&nbsp;</td></tr>"
-            + row("Avg Temperature:", f"{np.mean(self.cw.temperature):,.2f} °C")
-            + row("Avg Pressure:",    f"{np.mean(self.cw.pressure):,.0f} Pa")
+            + row("Avg Temperature:", f"{avg_temp:,.2f} °C")
+            + row("Avg Pressure:",    f"{avg_pressure:,.0f} Pa")
             + "</table>"
+        )
+
+    def _emit_status(self):
+        """Emit updated statistics HTML to the status panel."""
+        html = self._status_html(
+            self.cw.PICO_total_time_s, self.cw.total_deadtime_s, self.cw.live_time_s,
+            self.cw.total_counts, self.cw.count_rate, self.cw.count_rate_err,
+            self.cw.total_coincident, self.cw.count_rate_coincident, self.cw.count_rate_err_coincident,
+            np.mean(self.cw.temperature), np.mean(self.cw.pressure),
         )
         self.data_ready2.emit(html)
 
@@ -1489,7 +1538,11 @@ class FuturisticDashboard(QWidget):
             file_name = self.cw.file_path
             adc_min = self.adc_slider.value()
             adc_max = self.adc_max_slider.value()
-            self.cw = CWClass(file_name, self.selected_bin_time, self.feed_box, adc_min=adc_min, adc_max=adc_max)
+            try:
+                self.cw = CWClass(file_name, self.selected_bin_time, self.feed_box, adc_min=adc_min, adc_max=adc_max)
+            except Exception as e:
+                self.feed_box.append(f"Recalculation failed: {e}")
+                return
             self.feed_box.append(f"Recalculated with bin size = {self.selected_bin_time}s, ADC min = {adc_min}, ADC max = {adc_max}")
             self._emit_status()
             self.current_plot_func()  # re-run whichever plot was last shown
@@ -1553,7 +1606,6 @@ class FuturisticDashboard(QWidget):
         self.selected_bin_time = best
         self.binning_selected = True
         btn_map[best].setChecked(True)
-        self.feed_box.append(f"Auto-selected bin time: {best}s  (run time {total_time:.0f}s)")
 
     def load_file(self):
         options = QFileDialog.Options()
@@ -1565,7 +1617,11 @@ class FuturisticDashboard(QWidget):
             self.auto_select_bin(file_name)
             adc_min = self.adc_slider.value()
             adc_max = self.adc_max_slider.value()
-            self.cw = CWClass(file_name, self.selected_bin_time, self.feed_box, adc_min=adc_min, adc_max=adc_max)
+            try:
+                self.cw = CWClass(file_name, self.selected_bin_time, self.feed_box, adc_min=adc_min, adc_max=adc_max)
+            except Exception as e:
+                self.feed_box.append(f"Failed to load file: {e}")
+                return
             self.cw.file_path = file_name
             self.current_plot_func = self.run_rate
             self.run_rate()
@@ -1837,6 +1893,14 @@ class FuturisticDashboard(QWidget):
             self.static_ax.set_xscale(xscale)
             self.static_ax.set_ylabel(ylabel, size=10, color='white')
             self.static_ax.set_xlabel(xlabel, size=10, color='white')
+            # Guard against xmin == xmax (e.g. only one bin of data so far), which would
+            # otherwise trigger a "singular transform" warning from matplotlib.
+            if xmin == xmax:
+                pad = 0.5 if xmin == 0 else abs(xmin) * 0.05
+                xmin, xmax = xmin - pad, xmax + pad
+            if ymin == ymax:
+                pad = 0.5 if ymin == 0 else abs(ymin) * 0.05
+                ymin, ymax = ymin - pad, ymax + pad
             self.static_ax.set_xlim(xmin, xmax)
             self.static_ax.set_ylim(ymin, ymax)
 
@@ -2083,7 +2147,9 @@ class FuturisticDashboard(QWidget):
         self.current_plot_func = self.run_rate
         self.toolbar.plot_type = "rate"
         f1 = self.cw
-        run_duration_min = max(f1.PICO_timestamp_s / 60)
+        # Derive the axis range from the same (already zero-shifted) array that gets plotted,
+        # rather than the raw device timestamps, so the limits always match the data.
+        run_duration_min = max(f1.binned_time_m)
         if run_duration_min > 1440:#2880:  # > 2 days — switch to days
             time_scale = 1440.0
             xlabel_rate = 'Time [days]'
@@ -2091,7 +2157,7 @@ class FuturisticDashboard(QWidget):
             time_scale = 1.0
             xlabel_rate = 'Time [min]'
         binned_time_scaled = f1.binned_time_m / time_scale
-        xmin_rate = min(f1.PICO_timestamp_s / 60) / time_scale
+        xmin_rate = min(f1.binned_time_m) / time_scale
         xmax_rate = run_duration_min / time_scale
         c = self.ratePlot(time = [binned_time_scaled, binned_time_scaled, binned_time_scaled],
         count_rates = [f1.binned_count_rate,f1.binned_count_rate_non_coincident,f1.binned_count_rate_coincident],
@@ -2267,38 +2333,53 @@ class FuturisticDashboard(QWidget):
         self.apply_theme()
 
     def stop_file(self):
+        if hasattr(self, 'live_plot_timer'):
+            self.live_plot_timer.stop()
         self.serial_connection.close()
         self.feed_box.append("Serial connection closed.")
         self.data_file.close()
-        self.feed_box.append("Data file closed.")    
+        self.feed_box.append("Data file closed.")
         self.read_serial_active = False
         self.feed_box.append("Recording stopped and file closed.")
 
-    def record_file(self):
+    def refresh_live_plot(self, file_name):
+        """Reload the in-progress recording file and plot it the same way load_file does."""
+        if not self.read_serial_active or not os.path.exists(file_name):
+            return
+        try:
+            self.auto_select_bin(file_name)
+            adc_min = self.adc_slider.value()
+            adc_max = self.adc_max_slider.value()
+            self.cw = CWClass(file_name, self.selected_bin_time, self.feed_box, adc_min=adc_min, adc_max=adc_max)
+            self.cw.file_path = file_name
+            self.current_plot_func = self.run_rate
+            self.run_rate()
+            self._emit_status()
+        except Exception as e:
+            self.feed_box.append(f"Live plot refresh skipped: {e}")
+
+    def record_file(self, filepath=None):
         if not hasattr(self, 'serial_connection') or not self.serial_connection.is_open:
             self.feed_box.append("Select a valid port or connect first.")
             return
         if self.serial_connection.is_open:
-            # Create a filename with timestamp like "CW_data_2025-07-01_15-30-00.txt"
             self.start_timestamp_dt = datetime.now()
             self.start_timestamp_str = self.start_timestamp_dt.strftime("%Y-%m-%d_%H-%M-%S")
-            filename = f"CW_data_{self.start_timestamp_str}.txt"
-            # Default save location: cwd/data/
-            default_dir = os.path.join(os.getcwd(), "data")
-            os.makedirs(default_dir, exist_ok=True)
-            suggested = os.path.join(default_dir, filename)
-            # Open save dialog so user can choose location
-            filepath, _ = QFileDialog.getSaveFileName(
-                self, "Save Data File", suggested,
-                "Text Files (*.txt);;All Files (*)"
-            )
-            if not filepath:
-                return  # user cancelled
+            if filepath is None:
+                # Manual record button: ask the user where to save, defaulting to the Data folder
+                filename = f"CW_data_{self.start_timestamp_str}.txt"
+                suggested = os.path.join(self.default_data_dir(), filename)
+                filepath, _ = QFileDialog.getSaveFileName(
+                    self, "Save Data File", suggested,
+                    "Text Files (*.txt);;All Files (*)"
+                )
+                if not filepath:
+                    return  # user cancelled
             self.read_serial_active = True
             # Open the file for writing and save the file handle
             self.data_file = open(filepath, "w")
             # Log to your feed_box GUI element
-            self.feed_box.append(f"Created new data file: {filepath}")
+            self.feed_box.append(f"Saving data to: {filepath}")
             header_lines = [
         "###########################################################################################################################################################",
         "#                                                          CosmicWatch: The Desktop Muon Detector v3X",
@@ -2320,9 +2401,13 @@ class FuturisticDashboard(QWidget):
                 livetime = 0 
                 self.events = 0
                 self.rate = 0
-                self.rate_error = 0 
+                self.rate_error = 0
                 self.coincidence_rate = 0
                 self.coincidence_rate_error = 0
+                temp_sum = 0.0
+                temp_count = 0
+                pressure_sum = 0.0
+                pressure_count = 0
 
                 while self.read_serial_active:
                   try:
@@ -2358,16 +2443,26 @@ class FuturisticDashboard(QWidget):
                                 except ValueError:
                                     pass
 
+                        # Write the complete row in one call so a stats-parsing error below
+                        # can never leave a truncated/partial line in the file.
+                        self.data_file.write('\t'.join(data) + '\n')
+
                         try:
-                            for j in range(len(data)):
-                                self.data_file.write(data[j]+'\t')
-                                self.detector_name = data[-3]
-                                if self.first_event_time is None:
-                                   self.first_event_time = float(data[1])
-                                   self.first_event = float(data[0])
-                                   self.first_dead_time = float(data[deadtime_col])
-                                self.time_stamp = float(data[1]) - self.first_event_time
-                                deadtime = float(data[deadtime_col]) - self.first_dead_time
+                            self.detector_name = data[-3]
+                            if len(data) > 7:
+                                try:
+                                    temp_sum += float(data[6])
+                                    temp_count += 1
+                                    pressure_sum += float(data[7])
+                                    pressure_count += 1
+                                except ValueError:
+                                    pass
+                            if self.first_event_time is None:
+                               self.first_event_time = float(data[1])
+                               self.first_event = float(data[0])
+                               self.first_dead_time = float(data[deadtime_col])
+                            self.time_stamp = float(data[1]) - self.first_event_time
+                            deadtime = float(data[deadtime_col]) - self.first_dead_time
                             livetime = (self.time_stamp) - deadtime
                             if livetime <= 0:
                                 livetime = 1e-8
@@ -2376,23 +2471,18 @@ class FuturisticDashboard(QWidget):
                             self.rate_error = math.sqrt(self.rate) / livetime
                             self.coincidence_rate = self.coincidence_counter / livetime
                             self.coincidence_rate_error = math.sqrt(self.coincidence_counter) / livetime
-                            hours = int(self.time_stamp // 3600)
-                            minutes = int((self.time_stamp % 3600) // 60)
-                            seconds = int(self.time_stamp % 60)
-                            self.data_ready2.emit(
-                                f"Run Time: {hours:02d}:{minutes:02d}:{seconds:02d}\n\n"
-                                f"Total deadtime: {deadtime:02.3f}s\n\n"
-                                f"Total Livetime: {livetime:02.2f}s\n\n"
-                                f"Single Counts: {self.events}\n\n"
-                                f"Single Count Rate: {self.rate:02.2f}±{self.rate_error:02.3f}Hz\n\n"
-                                f"Coincedence Counts: {self.coincidence_counter}\n\n"
-                                f"Coincedence Rate: {self.coincidence_rate:02.2f}±{self.coincidence_rate_error:02.3f}Hz\n\n"
-                            )
+                            avg_temp = temp_sum / temp_count if temp_count else 0.0
+                            avg_pressure = pressure_sum / pressure_count if pressure_count else 0.0
+                            self.data_ready2.emit(self._status_html(
+                                self.time_stamp, deadtime, livetime,
+                                self.events, self.rate, self.rate_error,
+                                self.coincidence_counter, self.coincidence_rate, self.coincidence_rate_error,
+                                avg_temp, avg_pressure,
+                            ))
                             self.last_screen_update_time = time.time()
                         except (ValueError, IndexError):
-                            pass  # skip lines that can't be fully parsed
+                            pass  # skip stats update for lines that can't be fully parsed
 
-                        self.data_file.write("\n")
                         #print(str(i+'\t') for i in data)
                         #print(*data, sep='\t')
                         event_number = int(data[0])
@@ -2408,21 +2498,15 @@ class FuturisticDashboard(QWidget):
                     else:
                         if time.time() - self.last_screen_update_time >= 1.0:
                             self.time_stamp += 1.0  # increment displayed time by 1 second
-                            hours = int(self.time_stamp // 3600)
-                            minutes = int((self.time_stamp % 3600) // 60)
-                            seconds = int(self.time_stamp % 60)
-                            self.data_ready2.emit(
-                                f"Run Time: {hours:02d}:{minutes:02d}:{seconds:02d}\n\n"
-                                f"Total deadtime: {deadtime:02.3f}\n\n"
-                                f"Total Livetime: {livetime:02.2f}\n\n"
-                                f"Single Counts: {self.events}\n\n"
-                                f"Single Count Rate: {self.rate:02.2f}±{self.rate_error:02.3f}Hz\n\n"
-                                f"Coincedence Counts: {self.coincidence_counter}\n\n"
-                                f"Coincedence Rate: {self.coincidence_rate:02.2f}±{self.coincidence_rate_error:02.3f}Hz\n\n"
-                                
-)
+                            avg_temp = temp_sum / temp_count if temp_count else 0.0
+                            avg_pressure = pressure_sum / pressure_count if pressure_count else 0.0
+                            self.data_ready2.emit(self._status_html(
+                                self.time_stamp, deadtime, livetime,
+                                self.events, self.rate, self.rate_error,
+                                self.coincidence_counter, self.coincidence_rate, self.coincidence_rate_error,
+                                avg_temp, avg_pressure,
+                            ))
                             self.last_screen_update_time = time.time()
-                            time.sleep(0.1)
                   except OSError:
                       self.read_serial_active = False
                       self.data_ready.emit("Serial connection lost.")
@@ -2433,6 +2517,11 @@ class FuturisticDashboard(QWidget):
         # Create and start the thread
         self.read_thread = threading.Thread(target=read_serial_data, daemon=True)
         self.read_thread.start()
+
+        # Periodically reload and plot the file being recorded, same as load_file()
+        self.live_plot_timer = QTimer(self)
+        self.live_plot_timer.timeout.connect(lambda: self.refresh_live_plot(filepath))
+        self.live_plot_timer.start(60000)  # every 1 minute
          
         
         
@@ -2444,6 +2533,7 @@ class FuturisticDashboard(QWidget):
             
 
 if __name__ == '__main__':
+    print("Welcome to the CosmicWatch GUI")
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     app = QApplication(sys.argv)
